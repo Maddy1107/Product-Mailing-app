@@ -12,7 +12,17 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Product Selector',
-      theme: ThemeData(useMaterial3: true),
+      debugShowCheckedModeBanner: false,
+
+      // 🌙 Dark Theme
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        colorSchemeSeed: Colors.blue,
+      ),
+
+      themeMode: ThemeMode.dark,
+
       home: const HomePage(),
     );
   }
