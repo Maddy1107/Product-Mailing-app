@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../widgets/product_list_item.dart';
 import '../dialogs/mail_preview_dialog.dart';
+import '../dialogs/name_prompt_dialog.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -15,10 +17,9 @@ class _HomePageState extends State<HomePage> {
   List<String> allProducts = [];
   List<String> filteredProducts = [];
   List<String> selectedProducts = [];
+  String? userName;
 
-  // Store original index for restoring position
-  final Map<String, int> originalIndexMap = {};
-
+  final Map<String, int> originalIndexes = {};
   final TextEditingController searchController = TextEditingController();
 
   @override
@@ -26,22 +27,52 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     loadProducts();
     searchController.addListener(onSearchChanged);
-  }
 
-  @override
-  void dispose() {
-    searchController.dispose();
-    super.dispose();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      checkUserName();
+    });
   }
 
   Future<void> loadProducts() async {
-    final jsonString = await rootBundle.loadString('assets/products.json');
+    final jsonString = await rootBundle.loadString('assets/product_list.json');
     final List<dynamic> jsonData = json.decode(jsonString);
 
     setState(() {
       allProducts = jsonData.cast<String>();
       filteredProducts = List.from(allProducts);
     });
+  }
+
+  Future<void> checkUserName() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    if (!mounted) return;
+
+    final savedName = prefs.getString('user_name');
+
+    if (savedName == null || savedName.isEmpty) {
+      final result = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const NamePromptDialog(),
+      );
+
+      if (!mounted) return;
+
+      if (result != null && result.isNotEmpty) {
+        await prefs.setString('user_name', result);
+
+        if (!mounted) return;
+
+        setState(() {
+          userName = result;
+        });
+      }
+    } else {
+      setState(() {
+        userName = savedName;
+      });
+    }
   }
 
   void onSearchChanged() {
@@ -54,56 +85,32 @@ class _HomePageState extends State<HomePage> {
   }
 
   void moveToSelected(String product) {
+    originalIndexes[product] = allProducts.indexOf(product);
+
     setState(() {
-      final index = allProducts.indexOf(product);
-      if (index != -1) {
-        originalIndexMap[product] = index;
-        allProducts.removeAt(index);
-        selectedProducts.add(product);
-        onSearchChanged();
-      }
+      allProducts.remove(product);
+      selectedProducts.add(product);
+      onSearchChanged();
     });
   }
 
   void moveToAvailable(String product) {
+    final index = originalIndexes[product] ?? allProducts.length;
+
     setState(() {
       selectedProducts.remove(product);
-
-      final originalIndex = originalIndexMap[product];
-      if (originalIndex != null && originalIndex <= allProducts.length) {
-        allProducts.insert(originalIndex, product);
-      } else {
-        allProducts.add(product);
-      }
-
-      originalIndexMap.remove(product);
+      allProducts.insert(index, product);
       onSearchChanged();
     });
   }
 
-  void clearAllSelected() {
-    setState(() {
-      for (final product in selectedProducts) {
-        final originalIndex = originalIndexMap[product];
-        if (originalIndex != null && originalIndex <= allProducts.length) {
-          allProducts.insert(originalIndex, product);
-        } else {
-          allProducts.add(product);
-        }
-        originalIndexMap.remove(product);
-      }
-      selectedProducts.clear();
-      onSearchChanged();
-    });
-  }
-
-  Future<void> confirmClearAll() async {
-    final bool? confirmed = await showDialog<bool>(
+  void clearAllSelected() async {
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (_) => AlertDialog(
         title: const Text('Clear all selected products?'),
         content: const Text(
-          'This will remove all selected products and return them to the available list.',
+          'This will move all selected products back to available.',
         ),
         actions: [
           TextButton(
@@ -119,82 +126,112 @@ class _HomePageState extends State<HomePage> {
       ),
     );
 
-    if (confirmed == true) {
-      clearAllSelected();
-    }
+    if (confirmed != true) return;
+
+    setState(() {
+      for (final product in selectedProducts) {
+        final index = originalIndexes[product] ?? allProducts.length;
+        allProducts.insert(index, product);
+      }
+      selectedProducts.clear();
+      onSearchChanged();
+    });
   }
 
   void showNextPopup() {
+    if (selectedProducts.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select at least one product'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     showDialog(
       context: context,
-      builder: (context) {
-        return MailPreviewDialog(selectedProducts: selectedProducts);
-      },
+      builder: (_) => MailPreviewDialog(
+        selectedProducts: selectedProducts,
+        userName: userName ?? 'User',
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final visibleProducts = searchController.text.isNotEmpty
-        ? filteredProducts
-        : filteredProducts.take(50).toList();
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Product Mail',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Product Mail',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            if (userName != null)
+              Text(
+                'Hi, ${userName?.trim().split(' ').first}',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: Colors.white70),
+              ),
+          ],
         ),
-        centerTitle: true,
-        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.arrow_forward),
+            tooltip: 'Next',
+            onPressed: showNextPopup,
+          ),
+        ],
       ),
 
       body: Column(
         children: [
-          // 🔍 Search bar
+          // 🔍 Search
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            padding: const EdgeInsets.all(12),
             child: TextField(
               controller: searchController,
               decoration: InputDecoration(
                 hintText: 'Search products...',
-                prefixIcon: const Icon(Icons.search, size: 20),
+                prefixIcon: const Icon(Icons.search),
                 suffixIcon: searchController.text.isNotEmpty
                     ? IconButton(
-                        icon: const Icon(Icons.clear, size: 18),
+                        icon: const Icon(Icons.clear),
                         onPressed: () {
                           searchController.clear();
                           FocusScope.of(context).unfocus();
                         },
                       )
                     : null,
-                isDense: true,
-                filled: true,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
               ),
             ),
           ),
 
-          // 🔼 Available products
+          // 🔼 AVAILABLE PRODUCTS
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(12),
-              itemCount: visibleProducts.length,
-              itemBuilder: (context, index) {
-                final product = visibleProducts[index];
-                return ProductListItem(
-                  productName: product,
-                  trailingIcon: Icons.add,
-                  onTap: () => moveToSelected(product),
-                );
-              },
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: ListView.builder(
+                key: ValueKey(filteredProducts.length),
+                itemCount: filteredProducts.length,
+                itemBuilder: (context, index) {
+                  final product = filteredProducts[index];
+                  return ProductListItem(
+                    productName: product,
+                    trailingIcon: Icons.add,
+                    isSelected: false,
+                    density: ProductItemDensity.compact,
+                    onTap: () => moveToSelected(product),
+                  );
+                },
+              ),
             ),
           ),
 
-          // 🔽 Selected products
+          // 🔽 SELECTED SECTION
           AnimatedSize(
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeInOut,
@@ -203,49 +240,50 @@ class _HomePageState extends State<HomePage> {
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Divider(thickness: 1),
+                      const Divider(),
 
-                      // Header with count + clear all
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        color: Theme.of(context).colorScheme.secondaryContainer,
-                        child: Row(
-                          children: [
-                            Text(
-                              'Selected products (${selectedProducts.length})',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
+                      // 🔢 Header with count + clear all
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 300),
+                        child: Padding(
+                          key: ValueKey(selectedProducts.length),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          child: Row(
+                            children: [
+                              Text(
+                                'Selected products (${selectedProducts.length})',
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.bold),
                               ),
-                            ),
-                            const Spacer(),
-                            TextButton(
-                              onPressed: selectedProducts.isEmpty
-                                  ? null
-                                  : confirmClearAll,
-                              style: TextButton.styleFrom(
-                                foregroundColor: Colors.red,
+                              const Spacer(),
+                              TextButton(
+                                onPressed: selectedProducts.isEmpty
+                                    ? null
+                                    : clearAllSelected,
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                ),
+                                child: const Text('Clear all'),
                               ),
-                              child: const Text('Clear all'),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
 
                       SizedBox(
-                        height: 350,
+                        height: 400,
                         child: ListView.builder(
-                          padding: const EdgeInsets.all(12),
                           itemCount: selectedProducts.length,
                           itemBuilder: (context, index) {
                             final product = selectedProducts[index];
                             return ProductListItem(
                               productName: product,
                               trailingIcon: Icons.remove,
+                              isSelected: true,
+                              density: ProductItemDensity.comfortable,
                               onTap: () => moveToAvailable(product),
                             );
                           },
@@ -255,12 +293,6 @@ class _HomePageState extends State<HomePage> {
                   ),
           ),
         ],
-      ),
-
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: showNextPopup,
-        icon: const Icon(Icons.arrow_forward),
-        label: const Text('Next'),
       ),
     );
   }
