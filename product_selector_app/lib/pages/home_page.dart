@@ -5,7 +5,6 @@ import '../controllers/product_controller.dart';
 import '../widgets/product_search_bar.dart';
 import '../widgets/available_products_list.dart';
 import '../widgets/selected_products_section.dart';
-import '../widgets/app_drawer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class HomePage extends StatefulWidget {
@@ -82,45 +81,46 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _addProduct() async {
-    final controllerText = TextEditingController();
+    return;
+    // final controllerText = TextEditingController();
 
-    final result = await showDialog<String>(
-      context: context,
-      builder: (_) {
-        return AlertDialog(
-          title: const Text('Add product'),
-          content: TextField(
-            controller: controllerText,
-            autofocus: true,
-            decoration: const InputDecoration(hintText: 'Product name'),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final value = controllerText.text.trim();
-                if (value.isNotEmpty) {
-                  Navigator.pop(context, value);
-                }
-              },
-              child: const Text('Add'),
-            ),
-          ],
-        );
-      },
-    );
+    // final result = await showDialog<String>(
+    //   context: context,
+    //   builder: (_) {
+    //     return AlertDialog(
+    //       title: const Text('Add product'),
+    //       content: TextField(
+    //         controller: controllerText,
+    //         autofocus: true,
+    //         decoration: const InputDecoration(hintText: 'Product name'),
+    //       ),
+    //       actions: [
+    //         TextButton(
+    //           onPressed: () => Navigator.pop(context),
+    //           child: const Text('Cancel'),
+    //         ),
+    //         ElevatedButton(
+    //           onPressed: () {
+    //             final value = controllerText.text.trim();
+    //             if (value.isNotEmpty) {
+    //               Navigator.pop(context, value);
+    //             }
+    //           },
+    //           child: const Text('Add'),
+    //         ),
+    //       ],
+    //     );
+    //   },
+    // );
 
-    if (!mounted) return;
+    // if (!mounted) return;
 
-    if (result != null && result.isNotEmpty) {
-      setState(() {
-        controller.allProducts.add(result);
-        controller.filter(searchController.text);
-      });
-    }
+    // if (result != null && result.isNotEmpty) {
+    //   setState(() {
+    //     controller.allProducts.add(result);
+    //     controller.filter(searchController.text);
+    //   });
+    // }
   }
 
   Future<void> _checkUserNameOnStartup() async {
@@ -180,8 +180,13 @@ class _HomePageState extends State<HomePage> {
                   case _ProfileAction.changeName:
                     _changeName();
                     break;
-                  case _ProfileAction.addProduct:
-                    _addProduct();
+
+                  // case _ProfileAction.addProduct:
+                  //   _addProduct();
+                  //   break;
+
+                  default:
+                    // No action for now
                     break;
                 }
               },
@@ -193,14 +198,16 @@ class _HomePageState extends State<HomePage> {
                     title: Text('Change name'),
                   ),
                 ),
-                PopupMenuItem(
-                  value: _ProfileAction.addProduct,
-                  child: ListTile(
-                    leading: Icon(Icons.add_box),
-                    title: Text('Add product'),
-                  ),
-                ),
+
+                // PopupMenuItem(
+                //   value: _ProfileAction.addProduct,
+                //   child: ListTile(
+                //     leading: Icon(Icons.add_box),
+                //     title: Text('Add product'),
+                //   ),
+                // ),
               ],
+
               child: CircleAvatar(
                 radius: 18,
                 backgroundColor: Theme.of(context).colorScheme.primary,

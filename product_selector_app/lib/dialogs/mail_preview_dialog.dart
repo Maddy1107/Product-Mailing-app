@@ -18,10 +18,10 @@ class MailPreviewDialog extends StatefulWidget {
 }
 
 class _MailPreviewDialogState extends State<MailPreviewDialog> {
-  MailType selectedType = MailType.received;
+  MailType selectedType = MailType.required;
 
   Color modeColor(BuildContext context) {
-    return selectedType == MailType.received ? Colors.green : Colors.orange;
+    return selectedType == MailType.received ? Colors.orange : Colors.green;
   }
 
   String buildEmailBody() {
@@ -94,12 +94,12 @@ class _MailPreviewDialogState extends State<MailPreviewDialog> {
             SegmentedButton<MailType>(
               segments: const [
                 ButtonSegment(
-                  value: MailType.received,
-                  label: Text('Received'),
-                ),
-                ButtonSegment(
                   value: MailType.required,
                   label: Text('Required'),
+                ),
+                ButtonSegment(
+                  value: MailType.received,
+                  label: Text('Received'),
                 ),
               ],
               selected: {selectedType},
