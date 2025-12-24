@@ -44,9 +44,14 @@ class _MailPreviewDialogState extends State<MailPreviewDialog> {
   }
 
   Future<void> sendEmail() async {
-    final uri = Uri(
-      scheme: 'mailto',
-      queryParameters: {'subject': 'Product update', 'body': buildEmailBody()},
+    final subject =
+        'Product ${selectedType == MailType.received ? 'Received' : 'Required'}';
+
+    final body = buildEmailBody();
+
+    final uri = Uri.parse(
+      'mailto:?subject=${Uri.encodeComponent(subject)}'
+      '&body=${Uri.encodeComponent(body)}',
     );
 
     await launchUrl(uri, mode: LaunchMode.externalApplication);

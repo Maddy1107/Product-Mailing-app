@@ -1,9 +1,11 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import '../widgets/product_list_item.dart';
-import '../dialogs/mail_preview_dialog.dart';
-import '../dialogs/name_prompt_dialog.dart';
+import 'package:product_selector_app/dialogs/mail_preview_dialog.dart';
+import 'package:product_selector_app/dialogs/name_prompt_dialog.dart';
+import '../controllers/product_controller.dart';
+import '../widgets/product_search_bar.dart';
+import '../widgets/available_products_list.dart';
+import '../widgets/selected_products_section.dart';
+import '../widgets/app_drawer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class HomePage extends StatefulWidget {
@@ -13,39 +15,116 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
-  List<String> allProducts = [];
-  List<String> filteredProducts = [];
-  List<String> selectedProducts = [];
-  String? userName;
+enum _ProfileAction { changeName, addProduct }
 
-  final Map<String, int> originalIndexes = {};
-  final TextEditingController searchController = TextEditingController();
+class _HomePageState extends State<HomePage> {
+  final controller = ProductController();
+  final searchController = TextEditingController();
+  String? userName;
 
   @override
   void initState() {
     super.initState();
-    loadProducts();
-    searchController.addListener(onSearchChanged);
+
+    controller.loadProducts().then((_) {
+      if (mounted) setState(() {});
+    });
+
+    searchController.addListener(() {
+      setState(() {
+        controller.filter(searchController.text);
+      });
+    });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      checkUserName();
+      _checkUserNameOnStartup();
     });
   }
 
-  Future<void> loadProducts() async {
-    final jsonString = await rootBundle.loadString('assets/product_list.json');
-    final List<dynamic> jsonData = json.decode(jsonString);
+  void showNextPopup() {
+    if (controller.selectedProducts.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select at least one product'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
 
-    setState(() {
-      allProducts = jsonData.cast<String>();
-      filteredProducts = List.from(allProducts);
-    });
+    showDialog(
+      context: context,
+      builder: (_) => MailPreviewDialog(
+        selectedProducts: controller.selectedProducts,
+        userName: userName ?? 'User',
+      ),
+    );
   }
 
-  Future<void> checkUserName() async {
+  Future<void> _changeName() async {
+    final result = await showDialog<String>(
+      context: context,
+      builder: (_) => const NamePromptDialog(),
+    );
+
+    if (!mounted) return;
+
+    if (result != null && result.isNotEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user_name', result);
+
+      if (!mounted) return;
+
+      setState(() {
+        userName = result;
+      });
+    }
+  }
+
+  Future<void> _addProduct() async {
+    final controllerText = TextEditingController();
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (_) {
+        return AlertDialog(
+          title: const Text('Add product'),
+          content: TextField(
+            controller: controllerText,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: 'Product name'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final value = controllerText.text.trim();
+                if (value.isNotEmpty) {
+                  Navigator.pop(context, value);
+                }
+              },
+              child: const Text('Add'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted) return;
+
+    if (result != null && result.isNotEmpty) {
+      setState(() {
+        controller.allProducts.add(result);
+        controller.filter(searchController.text);
+      });
+    }
+  }
+
+  Future<void> _checkUserNameOnStartup() async {
     final prefs = await SharedPreferences.getInstance();
-
     if (!mounted) return;
 
     final savedName = prefs.getString('user_name');
@@ -53,7 +132,7 @@ class _HomePageState extends State<HomePage> {
     if (savedName == null || savedName.isEmpty) {
       final result = await showDialog<String>(
         context: context,
-        barrierDismissible: false,
+        barrierDismissible: false, // ❌ must enter name
         builder: (_) => const NamePromptDialog(),
       );
 
@@ -75,222 +154,116 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  void onSearchChanged() {
-    final query = searchController.text.toLowerCase();
-    setState(() {
-      filteredProducts = allProducts
-          .where((p) => p.toLowerCase().contains(query))
-          .toList();
-    });
-  }
-
-  void moveToSelected(String product) {
-    originalIndexes[product] = allProducts.indexOf(product);
-
-    setState(() {
-      allProducts.remove(product);
-      selectedProducts.add(product);
-      onSearchChanged();
-    });
-  }
-
-  void moveToAvailable(String product) {
-    final index = originalIndexes[product] ?? allProducts.length;
-
-    setState(() {
-      selectedProducts.remove(product);
-      allProducts.insert(index, product);
-      onSearchChanged();
-    });
-  }
-
-  void clearAllSelected() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Clear all selected products?'),
-        content: const Text(
-          'This will move all selected products back to available.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Clear all'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    setState(() {
-      for (final product in selectedProducts) {
-        final index = originalIndexes[product] ?? allProducts.length;
-        allProducts.insert(index, product);
-      }
-      selectedProducts.clear();
-      onSearchChanged();
-    });
-  }
-
-  void showNextPopup() {
-    if (selectedProducts.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select at least one product'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
+  String _getInitials(String? name) {
+    if (name == null || name.trim().isEmpty) return '?';
+    final parts = name.trim().split(' ');
+    if (parts.length == 1) {
+      return parts.first[0].toUpperCase();
     }
-
-    showDialog(
-      context: context,
-      builder: (_) => MailPreviewDialog(
-        selectedProducts: selectedProducts,
-        userName: userName ?? 'User',
-      ),
-    );
+    return (parts[0][0] + parts[1][0]).toUpperCase();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        titleSpacing: 0,
+        title: Row(
           children: [
-            const Text(
-              'Product Mail',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            if (userName != null)
-              Text(
-                'Hi, ${userName?.trim().split(' ').first}',
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: Colors.white70),
+            const SizedBox(width: 8),
+
+            // 👤 PROFILE AVATAR (LEFT)
+            PopupMenuButton<_ProfileAction>(
+              tooltip: 'Profile options',
+              onSelected: (value) {
+                switch (value) {
+                  case _ProfileAction.changeName:
+                    _changeName();
+                    break;
+                  case _ProfileAction.addProduct:
+                    _addProduct();
+                    break;
+                }
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: _ProfileAction.changeName,
+                  child: ListTile(
+                    leading: Icon(Icons.edit),
+                    title: Text('Change name'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: _ProfileAction.addProduct,
+                  child: ListTile(
+                    leading: Icon(Icons.add_box),
+                    title: Text('Add product'),
+                  ),
+                ),
+              ],
+              child: CircleAvatar(
+                radius: 18,
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                child: Text(
+                  _getInitials(userName),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
               ),
+            ),
+
+            const SizedBox(width: 12),
+
+            // 🏷️ TITLE + SUBTITLE
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Product Mail',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                if (userName != null)
+                  Text(
+                    'Hi, ${userName!.trim().split(' ').first}',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.white70),
+                  ),
+              ],
+            ),
           ],
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.arrow_forward),
-            tooltip: 'Next',
             onPressed: showNextPopup,
           ),
         ],
       ),
-
       body: Column(
         children: [
-          // 🔍 Search
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: TextField(
-              controller: searchController,
-              decoration: InputDecoration(
-                hintText: 'Search products...',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          searchController.clear();
-                          FocusScope.of(context).unfocus();
-                        },
-                      )
-                    : null,
-              ),
-            ),
+          ProductSearchBar(
+            controller: searchController,
+            onClear: () {
+              searchController.clear();
+              controller.filter('');
+              setState(() {});
+            },
           ),
-
-          // 🔼 AVAILABLE PRODUCTS
           Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
-              child: ListView.builder(
-                key: ValueKey(filteredProducts.length),
-                itemCount: filteredProducts.length,
-                itemBuilder: (context, index) {
-                  final product = filteredProducts[index];
-                  return ProductListItem(
-                    productName: product,
-                    trailingIcon: Icons.add,
-                    isSelected: false,
-                    density: ProductItemDensity.compact,
-                    onTap: () => moveToSelected(product),
-                  );
-                },
-              ),
+            child: AvailableProductsList(
+              products: controller.filteredProducts,
+              onTap: (p) => setState(() => controller.select(p)),
             ),
           ),
-
-          // 🔽 SELECTED SECTION
-          AnimatedSize(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
-            child: selectedProducts.isEmpty
-                ? const SizedBox.shrink()
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Divider(),
-
-                      // 🔢 Header with count + clear all
-                      AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 300),
-                        child: Padding(
-                          key: ValueKey(selectedProducts.length),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                          child: Row(
-                            children: [
-                              Text(
-                                'Selected products (${selectedProducts.length})',
-                                style: Theme.of(context).textTheme.titleMedium
-                                    ?.copyWith(fontWeight: FontWeight.bold),
-                              ),
-                              const Spacer(),
-                              TextButton(
-                                onPressed: selectedProducts.isEmpty
-                                    ? null
-                                    : clearAllSelected,
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Colors.red,
-                                ),
-                                child: const Text('Clear all'),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-
-                      SizedBox(
-                        height: 400,
-                        child: ListView.builder(
-                          itemCount: selectedProducts.length,
-                          itemBuilder: (context, index) {
-                            final product = selectedProducts[index];
-                            return ProductListItem(
-                              productName: product,
-                              trailingIcon: Icons.remove,
-                              isSelected: true,
-                              density: ProductItemDensity.comfortable,
-                              onTap: () => moveToAvailable(product),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
+          SelectedProductsSection(
+            products: controller.selectedProducts,
+            onClearAll: () => setState(controller.clearSelected),
+            onRemove: (p) => setState(() => controller.unselect(p)),
           ),
         ],
       ),
