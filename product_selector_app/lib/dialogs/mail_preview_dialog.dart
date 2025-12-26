@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/services.dart';
 
 enum MailType { received, required }
 
@@ -41,6 +42,19 @@ class _MailPreviewDialogState extends State<MailPreviewDialog> {
     buffer.writeln(widget.userName);
 
     return buffer.toString();
+  }
+
+  void copyToClipboard() {
+    final body = buildEmailBody();
+
+    Clipboard.setData(ClipboardData(text: body));
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Mail content copied to clipboard'),
+        duration: Duration(seconds: 2),
+      ),
+    );
   }
 
   Future<void> sendEmail() async {
@@ -129,10 +143,23 @@ class _MailPreviewDialogState extends State<MailPreviewDialog> {
         ),
       ),
       actions: [
-        ElevatedButton.icon(
-          onPressed: sendEmail,
-          icon: const Icon(Icons.send),
-          label: const Text('Send Email'),
+        Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ElevatedButton.icon(
+                onPressed: copyToClipboard,
+                icon: const Icon(Icons.copy),
+                label: const Text('Copy'),
+              ),
+              const SizedBox(height: 18), // height, not width (vertical layout)
+              ElevatedButton.icon(
+                onPressed: sendEmail,
+                icon: const Icon(Icons.send),
+                label: const Text('Send Email'),
+              ),
+            ],
+          ),
         ),
       ],
     );
