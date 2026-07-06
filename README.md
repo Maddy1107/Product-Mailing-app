@@ -3,14 +3,6 @@
 A modern, responsive, and cross-platform Flutter application built to streamline product status reporting for field agents and teams. The app allows users to search and select products from a local database, customize reports based on whether items are "Required" or "Received", and immediately generate a structured email report or copy the draft to their clipboard.
 
 ---
-
-## 📸 Screen Preview
-
-### Startup Welcome & Name Setup
-Upon first opening the application, the user is greeted with a setup dialog to configure their profile name. This name is used to sign off the emails.
-
-![Startup Name Setup Dialog](screenshots/01_name_prompt.png)
-
 ---
 
 ## ✨ Key Features
